@@ -1,0 +1,26 @@
+Query count 1222
+Column size 128
+Number of merkle pathes 1222
+Number of field elements 156416
+Depth 16
+total evaluation time: 0.0857953 seconds.
+Calc V_output(r)
+        Time: 6.377e-05
+GKR Prove Time 1.06101
+GKR witness size 131072
+FFT Prepare time 0.497354
+VPD prepare time 0.778558
+PostGKR FFT time 0.639522
+PostGKR remap time 0.217031
+PostGKR prepare time 0 0.941125
+PostGKR prepare time 1 0.258486
+FRI commit time 0.355524
+Verification pass
+Prove Time 3.41314
+Verification rdl time 0.228058
+Verification Time 0.00356873
+Proof size(bytes) 177632
+Proof size for tensor IOP 3376768 bytes
+Verification time 0.022858
+Commit time 9.695358
+Open time 4.893358

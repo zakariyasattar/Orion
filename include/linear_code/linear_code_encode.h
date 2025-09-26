@@ -1,10 +1,22 @@
 #pragma once
 #include "expanders.h"
+#include <iostream>
 
+// 2d array of pointers to field elements
+// statically allocated memory pool for FFT operations
 extern prime_field::field_element *scratch[2][100];
 
 extern bool __encode_initialized;
 
+// main bottleneck of program
+// perf report --stdio --source
+// to see breakdown
+
+// this function at a high level performs recursive expander encoding algorithms
+
+// field elements are representations of elements in a qudratic extension field
+
+namespace Original {
 inline int encode(const prime_field::field_element *src, prime_field::field_element *dst, long long n, int dep = 0)
 {
     if(!__encode_initialized)
@@ -60,4 +72,5 @@ inline int encode(const prime_field::field_element *src, prime_field::field_elem
         dst[i] = scratch[0][dep][i];
     }
     return n + L + R;
+}
 }

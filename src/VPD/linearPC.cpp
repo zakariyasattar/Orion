@@ -444,8 +444,6 @@ std::pair<prime_field::field_element, bool> open_and_verify(prime_field::field_e
     dfs(r0, r, column_size, 0, prime_field::field_element(1));
     dfs(r1, r + log_column_size, N / column_size, 0, prime_field::field_element(1));
 
-
-
     auto answer = tensor_product_protocol(r0, r1, column_size, N / column_size, N, com_mt);
     delete[] r0;
     delete[] r1;

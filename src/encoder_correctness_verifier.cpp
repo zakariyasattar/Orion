@@ -43,8 +43,11 @@ int main() {
     prime_field::field_element_optimized *opt_dest_p  = new prime_field::field_element_optimized[buffer_size];
     
     for(int i = 0; i < N; ++i) {
-        og_coefs_p[i]  = prime_field::random();
-        opt_coefs_p[i] = prime_field::random_opt();
+        og_coefs_p[i] = prime_field::random();
+        
+        // Copy the same values to the optimized version
+        opt_coefs_p[i].real.store(og_coefs_p[i].real, std::memory_order_relaxed);
+        opt_coefs_p[i].img.store(og_coefs_p[i].img, std::memory_order_relaxed);
     }
 
     __encode_initialized_og = false;

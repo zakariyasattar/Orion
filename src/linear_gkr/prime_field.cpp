@@ -43,6 +43,47 @@ namespace prime_field
         
         return ret;
     }
+    field_element_optimized random_opt() {
+        field_element_optimized ret;
+
+        ret.set_real((unsigned long long)rand() % mod);
+        ret.set_img((unsigned long long)rand() % mod);
+        
+        return ret;
+    }
+
+    // all copy constructors and copy assignment operator overloads
+    // for converting between field_element and field_element_optimized
+
+    field_element::field_element(const field_element_optimized& other)
+            : img(other.img), real(other.real) {}
+
+    field_element& field_element::operator=(const field_element_optimized& other) {
+        img = other.get_img();
+        real = other.get_real();
+        
+        return *this;
+    }
+
+    bool operator==(const field_element& a, const field_element_optimized& b) {
+        return a.real == b.real.load(std::memory_order_relaxed) && 
+               a.img == b.img.load(std::memory_order_relaxed);
+    }
+    
+    bool operator==(const field_element_optimized& a, const field_element& b) {
+        return b == a;
+    }
+
+    bool operator!=(const field_element& a, const field_element_optimized& b) {
+        return !(a == b);
+    }
+    
+    bool operator!=(const field_element_optimized& a, const field_element& b) {
+        return !(a == b);
+    }
+
+    ////////////////////
+
     bool field_element::operator != (const field_element &b) const
     {
         return get_real() != b.get_real() || get_img() != b.get_img();
@@ -51,6 +92,7 @@ namespace prime_field
     {
         return !(*this != b);
     }
+
     __mmask8 field_element_packed::operator == (const field_element_packed &b) const
     {
         __m256i res_real = real ^ b.real;

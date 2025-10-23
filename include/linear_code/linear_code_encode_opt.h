@@ -19,13 +19,13 @@
 
 // 2d array of pointers to field elements
 // statically allocated memory pool for FFT operations
-extern prime_field::field_element *scratch[2][100];
+extern prime_field::field_element_optimized *scratch_opt[2][100];
 
 // scratch[2][100]: Double-buffered memory pool for recursive expander encoding
 // At each recursion depth, scratch[0][dep] holds the working output buffer while
 // scratch[1][dep] stores intermediate expander results, preventing read-write conflicts
 
-extern bool __encode_initialized;
+extern bool __encode_initialized_opt;
 
 // main bottleneck of program
 // perf report --stdio --source
@@ -60,15 +60,15 @@ return int: length of encoded output
 
 namespace Optimized {
 
-inline int encode(const prime_field::field_element *src, prime_field::field_element *dst, long long n, int dep = 0)
+inline int encode(const prime_field::field_element_optimized *src, prime_field::field_element_optimized *dst, long long n, int dep = 0)
 {
-    if(!__encode_initialized)
+    if(!__encode_initialized_opt)
     {
-        __encode_initialized = true;
+        __encode_initialized_opt = true;
         for(int i = 0; (n >> i) > 1; ++i)
         {
-            scratch[0][i] = new prime_field::field_element[2 * n >> i];
-            scratch[1][i] = new prime_field::field_element[2 * n >> i];
+            scratch_opt[0][i] = new prime_field::field_element_optimized[2 * n >> i];
+            scratch_opt[1][i] = new prime_field::field_element_optimized[2 * n >> i];
         }
     }
     if(n <= distance_threshold)
@@ -79,47 +79,47 @@ inline int encode(const prime_field::field_element *src, prime_field::field_elem
     }
     for(long long i = 0; i < n; ++i)
     {
-        scratch[0][dep][i] = src[i];
+        scratch_opt[0][dep][i] = src[i];
     }
     long long R = alpha * n;
     for(long long j = 0; j < R; ++j)
-        scratch[1][dep][j] = prime_field::field_element(0ULL);
+        scratch_opt[1][dep][j] = prime_field::field_element_optimized(0ULL);
     
     
     //expander mult
     #pragma omp parallel for
     for(long long i = 0; i < n; ++i) {
-        const prime_field::field_element &val = src[i];
+        const prime_field::field_element_optimized &val = src[i];
         for(int d = 0; d < C[dep].degree; ++d) {
             int target = C[dep].neighbor[i][d];
 
-            // #pragma omp critical
-            scratch[1][dep][target] = scratch[1][dep][target] + C[dep].weight[i][d] * val;
+            #pragma omp critical
+            scratch_opt[1][dep][target] = scratch_opt[1][dep][target] + C[dep].weight[i][d] * val;
         }
     }
 
-    long long L = encode(scratch[1][dep], &scratch[0][dep][n], R, dep + 1);
-    assert(D[dep].L = L);
+    long long L = encode(scratch_opt[1][dep], &scratch_opt[0][dep][n], R, dep + 1);
+    assert((D[dep].L = L));
     R = D[dep].R;
     for(long long i = 0; i < R; ++i)
     {
-        scratch[0][dep][n + L + i] = prime_field::field_element(0ULL);
+        scratch_opt[0][dep][n + L + i] = prime_field::field_element_optimized(0ULL);
     }
 
     #pragma omp parallel for
     for(long long i = 0; i < L; ++i)
     {
-        prime_field::field_element &val = scratch[0][dep][n + i];
+        prime_field::field_element_optimized &val = scratch_opt[0][dep][n + i];
         for(int d = 0; d < D[dep].degree; ++d)
         {
             long long target = D[dep].neighbor[i][d];
             #pragma omp critical
-            scratch[0][dep][n + L + target] = scratch[0][dep][n + L + target] + val * D[dep].weight[i][d];
+            scratch_opt[0][dep][n + L + target] = scratch_opt[0][dep][n + L + target] + val * D[dep].weight[i][d];
         }
     }
     for(long long i = 0; i < n + L + R; ++i)
     {
-        dst[i] = scratch[0][dep][i];
+        dst[i] = scratch_opt[0][dep][i];
     }
     return n + L + R;
 }

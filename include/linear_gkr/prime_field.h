@@ -85,13 +85,116 @@ namespace prime_field
         return _mm256_add_epi64(srl64, and64);
     }
 
+    class field_element_optimized;
+
+    class field_element
+    {
+    private:
+    public:
+        unsigned long long img, real;
+        std::unique_ptr<char[]> bit_stream()
+        {
+            char* p = new char[sizeof(field_element)];
+            memcpy(p, this, sizeof(field_element));
+            return std::unique_ptr<char[]>(p);
+        }
+
+        int size() {return sizeof(field_element);}
+
+        unsigned long long get_real() const { return real; }
+        unsigned long long get_img() const { return img; }
+
+        void set_img(unsigned long long val) { img = val; }
+        void set_real(unsigned long long val) { real = val; }
+
+        // Conversion from field_element_optimized (copy constructor)
+        field_element(const field_element_optimized& other);
+
+        field_element& operator=(const field_element_optimized& other);
+
+        inline field_element()
+        {
+            real = 0;
+            img = 0;
+        }
+        inline field_element(const unsigned long long x)
+        {
+            real = x % mod;
+            img = 0;
+        }
+
+        inline field_element operator + (const field_element &b) const
+        {
+            field_element ret;
+            ret.img = b.img + img;
+            ret.real = b.real + real;
+            if(mod <= ret.img)
+                ret.img = ret.img - mod;
+            if(mod <= ret.real)
+                ret.real = ret.real - mod;
+            return ret;
+        }
+        inline field_element operator * (const field_element &b) const
+        {
+            field_element ret;
+            auto all_prod = mymult(img + real, b.img + b.real); //at most 6 * mod
+            //unsigned long long ac, bd;
+            //mymult_2vec(real, b.real, img, b.img, ac, bd);
+            auto ac = mymult(real, b.real), bd = mymult(img, b.img); //at most 1.x * mod
+            auto nac = ac;
+            if(bd >= mod)
+                bd -= mod;
+            if(nac >= mod)
+                nac -= mod;
+            nac ^= mod; //negate
+            bd ^= mod; //negate
+
+            auto t_img = all_prod + nac + bd; //at most 8 * mod
+            t_img = myMod(t_img);
+            if(t_img >= mod)
+                t_img -= mod;
+            ret.img = t_img;
+            auto t_real = ac + bd;
+
+            while(t_real >= mod)
+                t_real -= mod;
+            ret.real = t_real;
+            return ret;
+        }
+        inline field_element operator - (const field_element &b) const
+        {
+            field_element ret;
+            auto tmp_r = b.real ^ mod; //tmp_r == -b.real is true in this prime field
+            auto tmp_i = b.img ^ mod; //same as above
+            ret.real = real + tmp_r;
+            ret.img = img + tmp_i;
+            if(ret.real >= mod)
+                ret.real -= mod;
+            if(ret.img >= mod)
+                ret.img -= mod;
+
+            return ret;
+        }
+        inline field_element operator - () const
+        {
+            field_element ret;
+            ret.real = (mod - real) % mod; // do modular in case real = 0
+            ret.img = (mod - img) % mod;
+            return ret;
+        }
+
+        bool operator == (const field_element &b) const;
+        bool operator != (const field_element &b) const;
+    };
+
+
     using ull       = unsigned long long;
     using uint128_t = unsigned __int128;
 
     /*
     This defines a field
     */
-    class field_element
+    class field_element_optimized
     {
     private:
     public:
@@ -101,8 +204,8 @@ namespace prime_field
         // used only for debugging
         std::unique_ptr<char[]> bit_stream()
         {
-            char* p = new char[sizeof(field_element)];
-            memcpy(p, this, sizeof(field_element));
+            char* p = new char[sizeof(field_element_optimized)];
+            memcpy(p, this, sizeof(field_element_optimized));
             return std::unique_ptr<char[]>(p);
         }
 
@@ -111,20 +214,23 @@ namespace prime_field
             and to maintain original functionality for some operators
         */
 
+        field_element_optimized(const field_element& other)
+            : img(other.img), real(other.real) {}
+
         // Copy constructor
-        field_element(const field_element& other) 
+        field_element_optimized(const field_element_optimized& other) 
             : img(other.img.load()), 
             real(other.real.load()), 
             seq_ctr(other.seq_ctr.load()) {}
 
         // Move constructor
-        field_element(field_element&& other) 
+        field_element_optimized(field_element_optimized&& other) 
             : img(other.img.load()), 
             real(other.real.load()), 
             seq_ctr(other.seq_ctr.load()) {}
 
         // Copy assignment
-        field_element& operator=(const field_element& other) {
+        field_element_optimized& operator=(const field_element_optimized& other) {
             if (this != &other) {
                 img.store(other.img.load());
                 real.store(other.real.load());
@@ -133,8 +239,17 @@ namespace prime_field
             return *this;
         }
 
+        field_element_optimized& operator=(const field_element& other) {
+            img.store(other.img);
+            real.store(other.real);
+
+            seq_ctr.store(0);
+
+            return *this;
+        }
+
         // Move assignment
-        field_element& operator=(field_element&& other) {
+        field_element_optimized& operator=(field_element_optimized&& other) {
             if (this != &other) {
                 img.store(other.img.load());
                 real.store(other.real.load());
@@ -149,25 +264,25 @@ namespace prime_field
         ull get_img() const { return img.load(); }
         void set_img(ull newImg) { img.store(newImg); }
 
-        int size() {return sizeof(field_element);}
+        int size() {return sizeof(field_element_optimized);}
 
-        inline field_element(){
+        inline field_element_optimized(){
             real.store(0);
             img.store(0);
         }
-        inline field_element(const unsigned long long x){
+        inline field_element_optimized(const unsigned long long x){
             real.store(x % mod);
             img.store(0);
         }
 
-        inline field_element operator + (const field_element &b) const
+        inline field_element_optimized operator + (const field_element_optimized &b) const
         {
             ull b_img  = b.img.load();
             ull b_real = b.real.load();
             ull a_img  = this->img.load();
             ull a_real = this->real.load();
 
-            field_element ret;
+            field_element_optimized ret;
             ret.img.store(b_img + a_img);
             ret.real.store(b_real + a_real);
             
@@ -178,9 +293,9 @@ namespace prime_field
             return ret;
         }
 
-        inline field_element operator * (const field_element &b) const
+        inline field_element_optimized operator * (const field_element_optimized &b) const
         {
-            field_element ret;
+            field_element_optimized ret;
             ull all_prod = mymult(img.load() + real.load(), b.img.load() + b.real.load()); //at most 6 * mod
             //unsigned long long ac, bd;
             //mymult_2vec(real, b.real, img, b.img, ac, bd);
@@ -207,9 +322,9 @@ namespace prime_field
 
             return ret;
         }
-        inline field_element operator - (const field_element &b) const
+        inline field_element_optimized operator - (const field_element_optimized &b) const
         {
-            field_element ret;
+            field_element_optimized ret;
             
             ull tmp_r = b.real.load() ^ mod; //tmp_r == -b.real is true in this prime field
             ull tmp_i = b.img.load() ^ mod; //same as above
@@ -224,9 +339,9 @@ namespace prime_field
 
             return ret;
         }
-        inline field_element operator - () const
+        inline field_element_optimized operator - () const
         {
-            field_element ret;
+            field_element_optimized ret;
             
             ret.real.store((mod - real.load()) % mod); // do modular in case real = 0
             ret.img.store((mod - img.load()) % mod);
@@ -234,11 +349,15 @@ namespace prime_field
             return ret;
         }
 
-        bool operator == (const field_element &b) const;
-        bool operator != (const field_element &b) const;
+        bool operator == (const field_element_optimized &b) const;
+        bool operator != (const field_element_optimized &b) const;
     };
 
-    
+    // Cross-type comparison operators
+    bool operator==(const field_element& a, const field_element_optimized& b);
+    bool operator==(const field_element_optimized& a, const field_element& b);
+    bool operator!=(const field_element& a, const field_element_optimized& b);
+    bool operator!=(const field_element_optimized& a, const field_element& b);
 
     // class alignas(16) field_element_atomic {
     // public:
@@ -417,6 +536,7 @@ namespace prime_field
     field_element get_root_of_unity(int order); //return a root of unity with order 2^[order]
     field_element random_real_only();
     field_element random();
+    field_element_optimized random_opt();
     field_element fast_pow(field_element x, __uint128_t p);
     field_element inv(field_element x);
     double self_speed_test_mult(int repeat);

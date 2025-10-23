@@ -10,14 +10,14 @@ extern bool __encode_initialized;
 
 bool compareOutputs(
     const prime_field::field_element* a, 
-    const prime_field::field_element* b, 
+    const prime_field::field_element_optimized* b, 
     int                               len
 ) {
     for(int i = 0; i < len; ++i) {
         if(a[i] != b[i]) {
             std::cout << "Mismatch at index " << i 
-                        << ": expected (" << b[i].real << "," << b[i].img 
-                        << ") got (" << a[i].real << "," << a[i].img << ")" << std::endl;
+                        << ": expected (" << b[i].get_real() << "," << b[i].get_img() 
+                        << ") got (" << a[i].get_real() << "," << a[i].get_img() << ")" << std::endl;
             return false;
         }
     }
@@ -36,23 +36,27 @@ int main() {
     expander_init(N);
     
     int buffer_size = N * 3;
-    prime_field::field_element *coefs_p    = new prime_field::field_element[N];
+    prime_field::field_element *og_coefs_p    = new prime_field::field_element[N];
     prime_field::field_element *og_dest_p  = new prime_field::field_element[buffer_size];
-    prime_field::field_element *opt_dest_p = new prime_field::field_element[buffer_size];
-    
-    for(int i = 0; i < N; ++i)
-        coefs_p[i] = prime_field::random();
 
-    __encode_initialized = false;
+    prime_field::field_element_optimized *opt_coefs_p = new prime_field::field_element_optimized[N];
+    prime_field::field_element_optimized *opt_dest_p  = new prime_field::field_element_optimized[buffer_size];
+    
+    for(int i = 0; i < N; ++i) {
+        og_coefs_p[i]  = prime_field::random();
+        opt_coefs_p[i] = prime_field::random_opt();
+    }
+
+    __encode_initialized_og = false;
     
     auto og_start = std::chrono::high_resolution_clock::now();
-    int original_result_length = Original::encode(coefs_p, og_dest_p, N);
+    int original_result_length = Original::encode(og_coefs_p, og_dest_p, N);
     auto og_end = std::chrono::high_resolution_clock::now();
     
-    __encode_initialized = false;
+    __encode_initialized_opt = false;
 
     auto opt_start = std::chrono::high_resolution_clock::now();
-    int optimized_result_length = Optimized::encode(coefs_p, opt_dest_p, N);
+    int optimized_result_length = Optimized::encode(opt_coefs_p, opt_dest_p, N);
     auto opt_end = std::chrono::high_resolution_clock::now();
     
     auto og_duration  = std::chrono::duration_cast<std::chrono::milliseconds>(og_end - og_start);

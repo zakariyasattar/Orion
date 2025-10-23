@@ -6,7 +6,7 @@
 // statically allocated memory pool for FFT operations
 extern prime_field::field_element *scratch[2][100];
 
-extern bool __encode_initialized;
+extern bool __encode_initialized_og;
 
 // main bottleneck of program
 // perf report --stdio --source
@@ -19,9 +19,9 @@ extern bool __encode_initialized;
 namespace Original {
 inline int encode(const prime_field::field_element *src, prime_field::field_element *dst, long long n, int dep = 0)
 {
-    if(!__encode_initialized)
+    if(!__encode_initialized_og)
     {
-        __encode_initialized = true;
+        __encode_initialized_og = true;
         for(int i = 0; (n >> i) > 1; ++i)
         {
             scratch[0][i] = new prime_field::field_element[2 * n >> i];
@@ -52,7 +52,7 @@ inline int encode(const prime_field::field_element *src, prime_field::field_elem
         }
     }
     long long L = encode(scratch[1][dep], &scratch[0][dep][n], R, dep + 1);
-    assert(D[dep].L = L);
+    assert((D[dep].L = L));
     R = D[dep].R;
     for(long long i = 0; i < R; ++i)
     {

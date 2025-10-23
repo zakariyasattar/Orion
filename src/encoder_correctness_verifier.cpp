@@ -3,6 +3,7 @@
 #include "linear_code/linear_code_encode.h"
 #include "linear_code/linear_code_encode_opt.h"
 
+#include <chrono>
 #include <iostream>
 
 extern bool __encode_initialized;
@@ -23,10 +24,15 @@ bool compareOutputs(
     return true;
 }
 
+using uint128_t = unsigned __int128;
+
 int main() {
+    bool lock_free = std::atomic<uint128_t>::is_always_lock_free;
+    std::cout << std::boolalpha << "is uint128_t lock free? " << lock_free << std::endl;
+
     prime_field::init();
     
-    int N = 16384;
+    int N = (1 << 13);
     expander_init(N);
     
     int buffer_size = N * 3;
@@ -36,18 +42,29 @@ int main() {
     
     for(int i = 0; i < N; ++i)
         coefs_p[i] = prime_field::random();
-    
+
     __encode_initialized = false;
+    
+    auto og_start = std::chrono::high_resolution_clock::now();
     int original_result_length = Original::encode(coefs_p, og_dest_p, N);
+    auto og_end = std::chrono::high_resolution_clock::now();
     
     __encode_initialized = false;
+
+    auto opt_start = std::chrono::high_resolution_clock::now();
     int optimized_result_length = Optimized::encode(coefs_p, opt_dest_p, N);
+    auto opt_end = std::chrono::high_resolution_clock::now();
     
+    auto og_duration  = std::chrono::duration_cast<std::chrono::milliseconds>(og_end - og_start);
+    auto opt_duration = std::chrono::duration_cast<std::chrono::milliseconds>(opt_end - opt_start);
+
     bool isCorrect = (original_result_length == optimized_result_length) &&
                      compareOutputs(og_dest_p, opt_dest_p, original_result_length);
     
     if(isCorrect) {
         std::cout << "Success! Optimized version matches original" << std::endl;
+        std::cout << "Original implementation took " << og_duration.count() << "ms \n";
+        std::cout << "Optimized implementation took " << opt_duration.count() << "ms \n"; 
     } else {
         std::cout << "Error: Results differ" << std::endl;
     }

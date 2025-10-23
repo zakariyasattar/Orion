@@ -28,7 +28,7 @@ __hhash_digest* commit(const prime_field::field_element *src, long long N)
         coef[i] = new prime_field::field_element[N / column_size];
         memcpy(coef[i], &src[i * N / column_size], sizeof(prime_field::field_element) * N / column_size);
         memset(encoded_codeword[i], 0, sizeof(prime_field::field_element) * N / column_size * 2);
-        codeword_size[i] = encode(&src[i * N / column_size], encoded_codeword[i], N / column_size);
+        codeword_size[i] = Original::encode(&src[i * N / column_size], encoded_codeword[i], N / column_size);
     }
 
     for(int i = 0; i < N / column_size * 2; ++i)
@@ -295,7 +295,7 @@ std::pair<prime_field::field_element, bool> tensor_product_protocol(prime_field:
     //check for encode
     {
         prime_field::field_element *test_codeword = new prime_field::field_element[N / column_size * 2];
-        int test_codeword_size = encode(combined_message, test_codeword, N / column_size);
+        int test_codeword_size = Original::encode(combined_message, test_codeword, N / column_size);
         assert(test_codeword_size == codeword_size[0]);
         for(int i = 0; i < test_codeword_size; ++i)
         {

@@ -1,12 +1,18 @@
 cmake_minimum_required(VERSION 3.16)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 project(fft_gkr)
 include_directories(include .)
 
 # Find OpenMP first
 find_package(OpenMP REQUIRED)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -O3")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -lstdc++ -Wall -march=native -faligned-new -O3")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -O3 -Wall -g")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -O3 -Wall -faligned-new -g")
+
+# -fopt-info-vec
 
 add_executable(linear_code_verifier 
     src/encoder_correctness_verifier.cpp 
@@ -23,13 +29,17 @@ add_executable(linearPC examples/univariate_PC_test.cpp src/linear_code/linear_c
 
 add_executable(linearPC_multi examples/multivariate_PC_test.cpp src/linear_code/linear_code_encode.cpp src/linear_code/expander.cpp src/VPD/linearPC.cpp src/infrastructure/RS_polynomial.cpp src/infrastructure/merkle_tree.cpp src/infrastructure/utility.cpp src/VPD/fri.cpp src/VPD/vpd_prover.cpp src/VPD/vpd_verifier.cpp src/linear_gkr/verifier.cpp src/linear_gkr/prime_field.cpp src/linear_gkr/prover.cpp src/linear_gkr/polynomial.cpp src/poly_commitment/poly_commit.cpp)
 
-# find_package(OpenMP REQUIRED)
-# target_link_libraries(linear_code OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
-# target_link_libraries(linearPC OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
-# target_link_libraries(linearPC_multi OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
+find_package(OpenMP REQUIRED)
+target_link_libraries(linear_code_verifier OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
+target_link_libraries(linear_code OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
+target_link_libraries(linearPC OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
+target_link_libraries(linearPC_multi OpenMP::OpenMP_CXX -Llib -lflo-shani -lXKCP -lgmp)
+
+
+# // add compiler flag for -omp
 
 # Keep the other libraries
-target_link_libraries(linear_code_verifier -Llib -lflo-shani -lXKCP -lgmp)
-target_link_libraries(linear_code -Llib -lflo-shani -lXKCP -lgmp)
-target_link_libraries(linearPC -Llib -lflo-shani -lXKCP -lgmp)
-target_link_libraries(linearPC_multi -Llib -lflo-shani -lXKCP -lgmp)
+# target_link_libraries(linear_code_verifier -Llib -lflo-shani -lXKCP -lgmp)
+# target_link_libraries(linear_code -Llib -lflo-shani -lXKCP -lgmp)
+# target_link_libraries(linearPC -Llib -lflo-shani -lXKCP -lgmp)
+# target_link_libraries(linearPC_multi -Llib -lflo-shani -lXKCP -lgmp)

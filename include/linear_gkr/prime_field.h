@@ -10,6 +10,8 @@
 #include <vector>
 #include <memory>
 #include <cstring>
+#include <atomic>
+#include <mutex>
 
 //using namespace boost::multiprecision;
 //using namespace boost::random;
@@ -83,6 +85,9 @@ namespace prime_field
         return _mm256_add_epi64(srl64, and64);
     }
 
+    using ull       = unsigned long long;
+    using uint128_t = unsigned __int128;
+
     /*
     This defines a field
     */
@@ -90,7 +95,10 @@ namespace prime_field
     {
     private:
     public:
-        unsigned long long img, real;
+        std::atomic<unsigned long long> img, real, seq_ctr = 0;
+
+        // this function will be problematic for use with atomics... but I think its
+        // used only for debugging
         std::unique_ptr<char[]> bit_stream()
         {
             char* p = new char[sizeof(field_element)];
@@ -98,37 +106,85 @@ namespace prime_field
             return std::unique_ptr<char[]>(p);
         }
 
+        /* 
+            Must implement rule of 5 in order to facilitate moves on atomics
+            and to maintain original functionality for some operators
+        */
+
+        // Copy constructor
+        field_element(const field_element& other) 
+            : img(other.img.load()), 
+            real(other.real.load()), 
+            seq_ctr(other.seq_ctr.load()) {}
+
+        // Move constructor
+        field_element(field_element&& other) 
+            : img(other.img.load()), 
+            real(other.real.load()), 
+            seq_ctr(other.seq_ctr.load()) {}
+
+        // Copy assignment
+        field_element& operator=(const field_element& other) {
+            if (this != &other) {
+                img.store(other.img.load());
+                real.store(other.real.load());
+                seq_ctr.store(other.seq_ctr.load());
+            }
+            return *this;
+        }
+
+        // Move assignment
+        field_element& operator=(field_element&& other) {
+            if (this != &other) {
+                img.store(other.img.load());
+                real.store(other.real.load());
+                seq_ctr.store(other.seq_ctr.load());
+            }
+            return *this;
+        }
+
+        ull get_real() const { return real.load(); }
+        void set_real(ull newReal) { real.store(newReal); }
+
+        ull get_img() const { return img.load(); }
+        void set_img(ull newImg) { img.store(newImg); }
+
         int size() {return sizeof(field_element);}
 
-        inline field_element()
-        {
-            real = 0;
-            img = 0;
+        inline field_element(){
+            real.store(0);
+            img.store(0);
         }
-        inline field_element(const unsigned long long x)
-        {
-            real = x % mod;
-            img = 0;
+        inline field_element(const unsigned long long x){
+            real.store(x % mod);
+            img.store(0);
         }
 
         inline field_element operator + (const field_element &b) const
         {
+            ull b_img  = b.img.load();
+            ull b_real = b.real.load();
+            ull a_img  = this->img.load();
+            ull a_real = this->real.load();
+
             field_element ret;
-            ret.img = b.img + img;
-            ret.real = b.real + real;
-            if(mod <= ret.img)
-                ret.img = ret.img - mod;
-            if(mod <= ret.real)
-                ret.real = ret.real - mod;
+            ret.img.store(b_img + a_img);
+            ret.real.store(b_real + a_real);
+            
+            if(mod <= ret.img.load())
+                ret.img.store(ret.img.load() - mod);
+            if(mod <= ret.real.load())
+                ret.real.store(ret.real.load() - mod);
             return ret;
         }
+
         inline field_element operator * (const field_element &b) const
         {
             field_element ret;
-            auto all_prod = mymult(img + real, b.img + b.real); //at most 6 * mod
+            ull all_prod = mymult(img.load() + real.load(), b.img.load() + b.real.load()); //at most 6 * mod
             //unsigned long long ac, bd;
             //mymult_2vec(real, b.real, img, b.img, ac, bd);
-            auto ac = mymult(real, b.real), bd = mymult(img, b.img); //at most 1.x * mod
+            ull ac = mymult(real.load(), b.real.load()), bd = mymult(img.load(), b.img.load()); //at most 1.x * mod
             auto nac = ac;
             if(bd >= mod)
                 bd -= mod;
@@ -137,43 +193,128 @@ namespace prime_field
             nac ^= mod; //negate
             bd ^= mod; //negate
 
-            auto t_img = all_prod + nac + bd; //at most 8 * mod
+            ull t_img = all_prod + nac + bd; //at most 8 * mod
             t_img = myMod(t_img);
-            if(t_img >= mod)
-                t_img -= mod;
-            ret.img = t_img;
+            
+            if(t_img >= mod) { t_img -= mod; }
+            
+            ret.img.store(t_img);
+            
             auto t_real = ac + bd;
+            while(t_real >= mod) { t_real -= mod; }
 
-            while(t_real >= mod)
-                t_real -= mod;
-            ret.real = t_real;
+            ret.real.store(t_real);
+
             return ret;
         }
         inline field_element operator - (const field_element &b) const
         {
             field_element ret;
-            auto tmp_r = b.real ^ mod; //tmp_r == -b.real is true in this prime field
-            auto tmp_i = b.img ^ mod; //same as above
-            ret.real = real + tmp_r;
-            ret.img = img + tmp_i;
-            if(ret.real >= mod)
-                ret.real -= mod;
-            if(ret.img >= mod)
-                ret.img -= mod;
+            
+            ull tmp_r = b.real.load() ^ mod; //tmp_r == -b.real is true in this prime field
+            ull tmp_i = b.img.load() ^ mod; //same as above
+            
+            ret.real.store(real.load() + tmp_r);
+            ret.img.store(img.load() + tmp_i);
+
+            if(ret.real.load() >= mod)
+                ret.real.store(ret.real.load() - mod);
+            if(ret.img.load() >= mod)
+                ret.img.store(ret.img.load() - mod);
 
             return ret;
         }
         inline field_element operator - () const
         {
             field_element ret;
-            ret.real = (mod - real) % mod; // do modular in case real = 0
-            ret.img = (mod - img) % mod;
+            
+            ret.real.store((mod - real.load()) % mod); // do modular in case real = 0
+            ret.img.store((mod - img.load()) % mod);
+
             return ret;
         }
 
         bool operator == (const field_element &b) const;
         bool operator != (const field_element &b) const;
     };
+
+    
+
+    // class alignas(16) field_element_atomic {
+    // public:
+    //     std::atomic<uint128_t> packed_val;
+
+    //     inline field_element_atomic(){
+    //         packed_val.store(0);
+    //     }
+    //     inline field_element_atomic(const unsigned long long x){
+    //         ull real = x % mod, img = 0;
+
+    //         packed_val.store(pack(img, real));
+    //     }
+
+    //     static inline uint128_t pack(const ull img, const ull real) {
+    //         return (static_cast<uint128_t>(img) << 64 | real);
+    //     }
+
+    //     static inline std::pair<ull, ull> unpack(const std::atomic<uint128_t>& packed_val) {
+    //         ull img = static_cast<ull>(packed_val), real = static_cast<ull>(packed_val >> 64);
+
+    //         return std::make_pair(img, real);
+    //     }
+
+    //     // so atomic_add will add another node to this node
+    //     // I dont think I need to make * atomic?
+    //     // * is only used with applying the weight to the current neighbor
+    //     // which is not being written to anywhere in shared memory, and weights dont change
+    //     inline void atomic_add(const field_element_atomic& b) {
+    //         // load the value from the atomic
+    //         uint128_t a_packed_val = packed_val.load(std::memory_order_acquire);
+    //         uint128_t b_packed_val = b.packed_val.load(std::memory_order_acquire); // b is const
+
+    //         while(true) {
+    //             // populate new_packed_val with the addition between a and b
+    //             uint128_t new_packed_val_with_addition;
+    //             add(&new_packed_val_with_addition, a_packed_val, b.packed_val);
+
+    //             // compare_exchange_weak will update the value if comp is successful
+    //             if(packed_val.compare_exchange_weak(
+    //                 a_packed_val,
+    //                 new_packed_val_with_addition,
+    //                 std::memory_order_release,
+    //                 std::memory_order_acquire
+    //             )) {
+    //                 break;
+    //             }
+    //         }
+    //     }
+
+    //     inline void add(uint128_t* result_p, const uint128_t& a_packed_val, const uint128_t& b_packed_val) {
+    //         ull res_img, res_real;
+
+    //         // unpack this node and other node into ull
+    //         auto [a_img, a_real] = unpack(a_packed_val);
+    //         auto [b_img, b_real] = unpack(b_packed_val);
+
+    //         res_img = b_img + a_img;
+    //         res_real = b_real + a_real;
+
+    //         if(mod <= res_img) { res_img = res_img - mod; }
+    //         if(mod <= res_real) { res_real = res_real - mod; }
+
+    //         *result_p = pack(res_img, res_real);
+    //     }
+
+    //    // Multiply atomic with regular field_element (for weights)
+    //     inline field_element operator*(const field_element& b) const {
+    //         auto [a_img, a_real] = unpack(packed_val.load(std::memory_order_acquire));
+    //         field_element a_elem;
+    //         a_elem.img = a_img;
+    //         a_elem.real = a_real;
+    //         return a_elem * b;  // Returns regular field_element
+    //     }
+
+    // };
 
     class field_element_packed
     {

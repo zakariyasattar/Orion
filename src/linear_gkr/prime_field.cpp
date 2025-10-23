@@ -28,20 +28,24 @@ namespace prime_field
     field_element random_real_only()
     {
         field_element ret;
-        ret.real = (unsigned long long)rand() % mod;
-        ret.img = 0;
+        
+        ret.set_real((unsigned long long)rand() % mod);
+        ret.set_img(0);
+
         return ret;
     }
     field_element random()
     {
         field_element ret;
-        ret.real = (unsigned long long)rand() % mod;
-        ret.img = (unsigned long long)rand() % mod;
+
+        ret.set_real((unsigned long long)rand() % mod);
+        ret.set_img((unsigned long long)rand() % mod);
+        
         return ret;
     }
     bool field_element::operator != (const field_element &b) const
     {
-        return real != b.real || img != b.img;
+        return get_real() != b.get_real() || get_img() != b.get_img();
     }
     bool field_element::operator == (const field_element &b) const
     {
@@ -61,8 +65,8 @@ namespace prime_field
     {
         field_element rou;
         //general root of unity, have order 2^61
-        rou.img = 1033321771269002680L;
-        rou.real = 2147483648L;
+        rou.set_img(1033321771269002680L);
+        rou.set_real(2147483648L);
 
         assert(log_order <= 61);
 
@@ -103,7 +107,7 @@ namespace prime_field
             b = c * a;
             a = c * b;
         }
-        printf("%llu %llu\n", c.img, c.real);
+        printf("%llu %llu\n", c.get_img(), c.get_real());
         auto t1 = std::chrono::high_resolution_clock::now();
         return std::chrono::duration_cast<std::chrono::duration<double>>(t1 - t0).count();
     }
@@ -120,7 +124,7 @@ namespace prime_field
             b = c + a;
             a = c + b;
         }
-        printf("%llu %llu\n", c.img, c.real);
+        printf("%llu %llu\n", c.get_img(), c.get_real());
         auto t1 = std::chrono::high_resolution_clock::now();
         return std::chrono::duration_cast<std::chrono::duration<double>>(t1 - t0).count();
     }

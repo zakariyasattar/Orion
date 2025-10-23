@@ -1,10 +1,29 @@
 #pragma once
 #include "expanders.h"
+
 #include <iostream>
+#include <array>
+#include <atomic>
+#include <chrono>
+
+/*
+    Some approaches I am considering:
+        1. once n (recursively) falls below a certain limit, switch from heap memory to stack
+            - concern here is that even though memory pool is 'statically allocated', it still holds
+              pointers, which leads to pointer chasing and bad cache locality
+        2. also want to use a memory pool (?) to avoid constant re-allocation
+        2. vectorize/parallelize some of these loops
+        3. if there are loops that are taking a long time, maybe multithread them against other loops
+            - make sure no data dependency between loops first
+*/
 
 // 2d array of pointers to field elements
 // statically allocated memory pool for FFT operations
 extern prime_field::field_element *scratch[2][100];
+
+// scratch[2][100]: Double-buffered memory pool for recursive expander encoding
+// At each recursion depth, scratch[0][dep] holds the working output buffer while
+// scratch[1][dep] stores intermediate expander results, preventing read-write conflicts
 
 extern bool __encode_initialized;
 
@@ -25,23 +44,31 @@ dep:    the depth of recursion, determines which level of scratch to use, etc...
 return int: length of encoded output
 */
 
+#define TIME_LOOP(label, loop) { \
+    auto start = std::chrono::high_resolution_clock::now(); \
+    loop \
+    auto end = std::chrono::high_resolution_clock::now(); \
+    std::cerr << label << " took " \
+         << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() \
+         << " ms\n"; \
+}
+
+// most expensive loops:
+// expander mult took 218 ms
+// apply D edges took 154 ms
+// total runtime : 531 ms (above two operatios take 372ms 70%)
+
 namespace Optimized {
 
 inline int encode(const prime_field::field_element *src, prime_field::field_element *dst, long long n, int dep = 0)
 {
-    std::cout << "n: " << n << std::endl;
     if(!__encode_initialized)
     {
         __encode_initialized = true;
         for(int i = 0; (n >> i) > 1; ++i)
         {
-            // fix #1: precedence bug with memory init
-            // was:
-            // scratch[0][i] = new prime_field::field_element[2 * n >> i];
-            // scratch[1][i] = new prime_field::field_element[2 * n >> i];
-
-            scratch[0][i] = new prime_field::field_element[(2 * n) >> i];
-            scratch[1][i] = new prime_field::field_element[(2 * n) >> i];
+            scratch[0][i] = new prime_field::field_element[2 * n >> i];
+            scratch[1][i] = new prime_field::field_element[2 * n >> i];
         }
     }
     if(n <= distance_threshold)
@@ -57,16 +84,20 @@ inline int encode(const prime_field::field_element *src, prime_field::field_elem
     long long R = alpha * n;
     for(long long j = 0; j < R; ++j)
         scratch[1][dep][j] = prime_field::field_element(0ULL);
+    
+    
     //expander mult
-    for(long long i = 0; i < n; ++i)
-    {
+    #pragma omp parallel for
+    for(long long i = 0; i < n; ++i) {
         const prime_field::field_element &val = src[i];
-        for(int d = 0; d < C[dep].degree; ++d)
-        {
+        for(int d = 0; d < C[dep].degree; ++d) {
             int target = C[dep].neighbor[i][d];
+
+            // #pragma omp critical
             scratch[1][dep][target] = scratch[1][dep][target] + C[dep].weight[i][d] * val;
         }
     }
+
     long long L = encode(scratch[1][dep], &scratch[0][dep][n], R, dep + 1);
     assert(D[dep].L = L);
     R = D[dep].R;
@@ -74,12 +105,15 @@ inline int encode(const prime_field::field_element *src, prime_field::field_elem
     {
         scratch[0][dep][n + L + i] = prime_field::field_element(0ULL);
     }
+
+    #pragma omp parallel for
     for(long long i = 0; i < L; ++i)
     {
         prime_field::field_element &val = scratch[0][dep][n + i];
         for(int d = 0; d < D[dep].degree; ++d)
         {
             long long target = D[dep].neighbor[i][d];
+            #pragma omp critical
             scratch[0][dep][n + L + target] = scratch[0][dep][n + L + target] + val * D[dep].weight[i][d];
         }
     }
@@ -89,4 +123,5 @@ inline int encode(const prime_field::field_element *src, prime_field::field_elem
     }
     return n + L + R;
 }
-}
+
+} // close namespace Optimized

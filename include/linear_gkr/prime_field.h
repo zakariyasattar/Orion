@@ -9,12 +9,15 @@
 #include <immintrin.h>
 #include <vector>
 #include <memory>
+#include <thread>
 #include <cstring>
 #include <atomic>
 #include <mutex>
 
 //using namespace boost::multiprecision;
 //using namespace boost::random;
+
+inline std::atomic<long long> cas_failures = 0;
 
 namespace prime_field
 {
@@ -194,7 +197,7 @@ namespace prime_field
     /*
     This defines a field
     */
-    class field_element_optimized
+    class alignas(64) field_element_optimized
     {
     private:
     public:
@@ -347,6 +350,69 @@ namespace prime_field
             ret.img.store((mod - img.load()) % mod);
 
             return ret;
+        }
+
+        inline void atomic_add(const field_element_optimized& b) {
+            // 1) Acquire writer "lock" by turning seq to odd (serialize writers)
+            ull expected = seq_ctr.load(std::memory_order_acquire);
+            while (true) {
+                // if a writer is in progress, wait a bit and reload
+                if (expected & 1) {
+                    std::this_thread::yield();
+                    expected = seq_ctr.load(std::memory_order_acquire);
+                    continue;
+                }
+
+                // try to atomically claim the writer turn (make seq odd)
+                ull desired = expected + 1;
+                if (seq_ctr.compare_exchange_weak(
+                        expected, desired,
+                        std::memory_order_acq_rel,
+                        std::memory_order_acquire)) {
+                    break; // we now have exclusive write access (seq is odd)
+                }
+                else {
+                    cas_failures.fetch_add(1, std::memory_order_relaxed);
+                }
+                // if CAS failed, 'expected' is updated with the current seq; loop and retry
+            }
+
+            // With exclusive access, read current values and operand
+            ull a_real = real.load(std::memory_order_relaxed);
+            ull a_img  = img.load(std::memory_order_relaxed);
+
+            ull b_real = b.real.load(std::memory_order_relaxed);
+            ull b_img  = b.img.load(std::memory_order_relaxed);
+
+            // compute the addition
+            auto [new_img, new_real] = add(std::make_pair(a_img, a_real), std::make_pair(b_img, b_real));
+
+            // Store the new values. Use relaxed for data stores as we have exclusive access
+            real.store(new_real, std::memory_order_relaxed);
+            img.store(new_img,  std::memory_order_relaxed);
+
+            // Release the writer by incrementing seq (make it even).
+            // Use release semantics so prior stores are visible before seq becomes even.
+            seq_ctr.fetch_add(1, std::memory_order_release);
+        }
+
+        inline std::pair<ull, ull> add(
+            const std::pair<ull, ull>& a_packed_val,
+            const std::pair<ull, ull>& b_packed_val
+        ) {
+            ull res_img, res_real;
+
+            // unpack this node and other node into ull
+            auto [a_img, a_real] = a_packed_val;
+            auto [b_img, b_real] = b_packed_val;
+
+            res_img = b_img + a_img;
+            res_real = b_real + a_real;
+
+            if(mod <= res_img) { res_img = res_img - mod; }
+            if(mod <= res_real) { res_real = res_real - mod; }
+
+            return std::make_pair(res_img, res_real);
         }
 
         bool operator == (const field_element_optimized &b) const;

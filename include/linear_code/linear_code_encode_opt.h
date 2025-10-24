@@ -93,10 +93,14 @@ inline int encode(const prime_field::field_element_optimized *src, prime_field::
         for(int d = 0; d < C[dep].degree; ++d) {
             int target = C[dep].neighbor[i][d];
 
-            #pragma omp critical
-            scratch_opt[1][dep][target] = scratch_opt[1][dep][target] + C[dep].weight[i][d] * val;
+            scratch_opt[1][dep][target].atomic_add(C[dep].weight[i][d] * val);
+
+            // #pragma omp critical
+            // scratch_opt[1][dep][target] = scratch_opt[1][dep][target] + C[dep].weight[i][d] * val;
         }
     }
+
+    std::cout << "CAS failures: " << cas_failures.load() << std::endl;
 
     long long L = encode(scratch_opt[1][dep], &scratch_opt[0][dep][n], R, dep + 1);
     assert((D[dep].L = L));
@@ -113,10 +117,15 @@ inline int encode(const prime_field::field_element_optimized *src, prime_field::
         for(int d = 0; d < D[dep].degree; ++d)
         {
             long long target = D[dep].neighbor[i][d];
-            #pragma omp critical
-            scratch_opt[0][dep][n + L + target] = scratch_opt[0][dep][n + L + target] + val * D[dep].weight[i][d];
+            scratch_opt[0][dep][n + L + target].atomic_add(val * D[dep].weight[i][d]);
+
+            // #pragma omp critical
+            // scratch_opt[0][dep][n + L + target] = scratch_opt[0][dep][n + L + target] + val * D[dep].weight[i][d];
         }
     }
+
+    std::cout << "CAS failures: " << cas_failures.load() << std::endl;
+
     for(long long i = 0; i < n + L + R; ++i)
     {
         dst[i] = scratch_opt[0][dep][i];

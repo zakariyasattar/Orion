@@ -36,7 +36,7 @@ int main() {
     expander_init(N);
     
     int buffer_size = N * 3;
-    prime_field::field_element *og_coefs_p    = new prime_field::field_element[N];
+    prime_field::field_element *og_coefs_p = new prime_field::field_element[N];
     prime_field::field_element *og_dest_p  = new prime_field::field_element[buffer_size];
 
     prime_field::field_element_optimized *opt_coefs_p = new prime_field::field_element_optimized[N];
